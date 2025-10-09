@@ -1,15 +1,15 @@
 const int BLOCK_SIZE = 256; 
 // -----------------------------------------------------------------------------
-// GPU-safe representations
+// Device structs
 // -----------------------------------------------------------------------------
-struct KSeq {
+struct d_KSeq {
         const char* name;
         const char* seq;
         const char* qual;
         int seq_len;
 };
 
-struct MatchResult {
+struct d_MatchResult {
         const char* sample_name;
         const char* signature_name;
         double match_score;
@@ -17,11 +17,32 @@ struct MatchResult {
 };
 
 // -----------------------------------------------------------------------------
+// Helper to convert struct to d_KSeq
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Host structs
+// -----------------------------------------------------------------------------
+struct KSeq { // kseq_t
+        std::string name;
+        std::string comment;
+        std::string seq;
+        std::string qual;
+}
+
+struct MatchResult {
+        std::string sample_name;
+        std::string signature_name;
+        double match_score;
+        int integrity_hash;
+};
+
+// -----------------------------------------------------------------------------
 // GPU kernel
 // -----------------------------------------------------------------------------
-__global__ void strstr(const KSeq* samples,
-                const KSeq* signatures,
-                DeviceMatchResult* results,
+__global__ void strstr(const d_KSeq* samples,
+                const d_KSeq* signatures,
+                d_MatchResult* results,
                 int num_samples,
                 int num_signatures)
 {
@@ -78,10 +99,13 @@ __global__ void strstr(const KSeq* samples,
         }
 
         partial_results[tid] = result;
-        // use reduction to grab best result from partial_results
-        // memcpy results back to host
+        // parallel reduce on partial_results to obtain best match_result based on match_score
+        // copy to global memory
 }
 
+void runMatcher(const std::vector<klibpp::KSeq> &samples,
+                const std::vector<klibpp::KSeq> &signatures,
+                std::vector<MatchResult> &matches);
 int main() {
         // preproces vector of strings into array of simple char* struct
         // cudaAlloc and memcpy samples and signatures to device global mem
