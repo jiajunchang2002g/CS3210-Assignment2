@@ -145,11 +145,9 @@ void runMatcher(const std::vector<klibpp::KSeq>& samples,
         strstr_match_kernel<<<gridDim, blockDim>>>(d_samples, d_signatures, d_results, num_samples, num_signatures);
         cudaDeviceSynchronize();
 
-        // Step 1: Copy back raw device results
         std::vector<DeviceMatchResult> tmp(total);
         cudaMemcpy(tmp.data(), d_results, total * sizeof(DeviceMatchResult), cudaMemcpyDeviceToHost);
 
-        // Step 2: Convert to host-friendly MatchResult
         matches.resize(total);
         for (int s = 0; s < num_samples; ++s) {
                 for (int t = 0; t < num_signatures; ++t) {
