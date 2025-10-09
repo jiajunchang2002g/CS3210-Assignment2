@@ -79,13 +79,14 @@ __global__ void strstr(const KSeq* samples,
 
         partial_results[tid] = result;
         // use reduction to grab best result from partial_results
-
+        // memcpy results back to host
 }
 
 int main() {
-        // init some signatures and samples
-        KSeq[] signatures;
-        KSeq[] samples;
-        // call strstr
+        // preproces vector of strings into array of simple char* struct
+        // cudaAlloc and memcpy samples and signatures to device global mem
+        // cudaAlloc for results, 1% * number samples * sizeof(MatchResult), pass in this ptr
+        // invoke kernel (h_result, signatures, samples)
+        // convert h_result to vector of string struct
         strstr();
 }
