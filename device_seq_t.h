@@ -18,3 +18,4 @@ struct device_match_result_t {
         double match_score;
         int integrity_hash;
 };
+
