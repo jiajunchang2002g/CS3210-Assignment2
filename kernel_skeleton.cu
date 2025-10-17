@@ -6,16 +6,76 @@
 #include "common.h"
 #include "device_seq_t.h"
 
+#define BLOCK_SIZE 256
+
+__device__ int d_match_results_count = 0;
+
 __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const device_seq_t* d_signatures, 
                 int num_signatures, device_match_result_t* match_results) {
 
-        int sample_idx    = blockIdx.x * blockDim.x + threadIdx.x; // sample index
-        int signature_idx = blockIdx.y;                             // signature index
+        int id            = blockIdx.x * blockDim.x + threadIdx.x;         
+        if (id >= num_samples) return;
 
-        if (sample_idx >= num_samples || signature_idx >= num_signatures) return;
+        int tid           = threadIdx.x;
+        int sample_idx    = id;
+        int signature_idx = blockIdx.y;
 
         const device_seq_t& sample    = d_samples[sample_idx];
         const device_seq_t& signature = d_signatures[signature_idx];
+
+        __shared__ device_match_result_t block_match_results[BLOCK_SIZE];
+
+        int start = tid;
+        int end = sample.seq_len - signature.seq_len;
+        if (end < 0) return;
+
+        long long unsigned checksum = 0;
+        int best_sum = 0;
+        device_match_result_t match_result {};
+        match_result.sample_name = sample.name;
+        match_result.signature_name = signature.name;
+        match_result.match_score = 0;
+
+        for (int i = start; i < end; ++i) {
+                int curr_sum = 0;
+                for (int j = 0; j < signature.seq_len; ++j) {
+                        char s = sample.seq[i + j];
+                        char t = signature.seq[j];
+
+                        if (s == 'N' || t == 'N') continue;
+
+                        if (s == t) {
+                                curr_sum += static_cast<int>(sample.qual[i + j] - 33);
+                        } else {
+                                curr_sum = 0;
+                                break;
+                        } 
+                }
+                if (curr_sum > best_sum) {
+                        // better match found
+                        best_sum = curr_sum;
+                        match_result.match_score = best_sum / static_cast<double>(signature.seq_len);
+                }
+        }
+        match_result.integrity_hash = checksum % 97;
+
+        // reduction
+        block_match_results[tid] = match_result;
+        __syncthreads();
+        for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+                if (tid < stride) {
+                        device_match_result_t other_match_result = block_match_results[tid + stride];
+                        if (other_match_result.match_score > block_match_results[tid].match_score) {
+                                block_match_results[tid] = other_match_result;
+                        }
+                }
+                __syncthreads();
+        }
+        // write to device_match_results_t match_results[], might need a ptr in the struct
+        if (tid == 0) {
+                int idx = atomicAdd(&d_match_results_count, 1);
+                match_results[idx] = block_match_results[0];
+        }
 }
 
 void runMatcher(const std::vector<klibpp::KSeq>& samples,
@@ -93,11 +153,9 @@ void runMatcher(const std::vector<klibpp::KSeq>& samples,
         // -------------------------------------------------------------------------
         // Launch kernel 
         // -------------------------------------------------------------------------
-        const int BLOCK_SIZE = 256;
-        // grid.x, need more threads than numBlocks
-        const long long unsigned num = (samples.size() + BLOCK_SIZE - 1) / BLOCK_SIZE; 
+        const long long unsigned numBlocks = (samples.size() + BLOCK_SIZE - 1) / BLOCK_SIZE; 
 
-        dim3 gridDim(num, signatures.size()); 
+        dim3 gridDim(numBlocks, signatures.size()); 
         dim3 blockDim(BLOCK_SIZE, 1, 1);
 
         myKernel<<<gridDim, blockDim>>>(d_samples, samples.size(), d_signatures, signatures.size(), device_match_results);
