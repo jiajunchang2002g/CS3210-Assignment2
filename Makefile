@@ -2,7 +2,7 @@
 
 NVCC        := /usr/local/cuda/bin/nvcc
 COMMON_SRCS := common.cc
-HEADERS := kseq/kseq.h kseq_to_devicekseq.hpp
+HEADERS := kseq/kseq.h device_seq_t.h
 
 CXXFLAGS := -std=c++20 -O3
 

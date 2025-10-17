@@ -10,11 +10,11 @@ struct device_seq_t {
         char *seq;
         char *qual;
         int seq_len;
-}
+};
 
 struct device_match_result_t {
         char *sample_name;
         char *signature_name;
         double match_score;
         int integrity_hash;
-}
+};
