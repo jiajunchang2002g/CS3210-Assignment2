@@ -28,6 +28,7 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
 
         long long unsigned checksum = 0;
         int best_sum = 0;
+
         // thread local match result
         device_match_result_t match_result {};
         match_result.sample_name = sample.name;
@@ -54,8 +55,8 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
                         best_sum = curr_sum;
                 }
         }
-        match_result.match_score = best_sum / static_cast<double>(signature.seq_len);
-        match_result.integrity_hash = checksum % 97;
+        // match_result.match_score = best_sum;
+        // match_result.integrity_hash = checksum % 97;
 
         // copy 
         __shared__ double block_scores[BLOCK_SIZE];
@@ -105,8 +106,12 @@ void runMatcher(const std::vector<klibpp::KSeq>& samples,
                 cudaMallocManaged(&d_samples[i].qual, s.qual.size() + 1);
 
                 std::strcpy(d_samples[i].name, s.name.c_str());
-                std::strcpy(d_samples[i].seq,  s.seq.c_str());
-                std::strcpy(d_samples[i].qual, s.qual.c_str());
+                // std::strcpy(d_samples[i].seq,  s.seq.c_str());
+                std::memcpy(d_samples[i].seq, s.seq.data(), s.seq.size());
+                d_samples[i].seq[s.seq.size()] = '\0'; 
+                // std::strcpy(d_samples[i].qual, s.qual.c_str());
+                std::memcpy(d_samples[i].qual, s.qual.data(), s.qual.size());
+                d_samples[i].qual[s.qual.size()] = '\0'; 
         }
 
         // -------------------------------------------------------------------------
@@ -121,8 +126,14 @@ void runMatcher(const std::vector<klibpp::KSeq>& samples,
                 cudaMallocManaged(&d_signatures[i].qual, sig.qual.size() + 1);
 
                 std::strcpy(d_signatures[i].name, sig.name.c_str());
-                std::strcpy(d_signatures[i].seq,  sig.seq.c_str());
-                std::strcpy(d_signatures[i].qual, sig.qual.c_str());
+
+                // std::strcpy(d_signatures[i].seq,  sig.seq.c_str());
+                std::memcpy(d_signatures[i].seq, sig.seq.data(), sig.seq.size());
+                d_signatures[i].seq[sig.seq.size()] = '\0';
+
+                // std::strcpy(d_signatures[i].qual, sig.qual.c_str());
+                std::memcpy(d_signatures[i].qual, sig.qual.data(), sig.qual.size());
+                d_signatures[i].qual[sig.qual.size()] = '\0';
         }
 
         // -------------------------------------------------------------------------
