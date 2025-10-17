@@ -64,14 +64,12 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
 
         // reduction
         for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-                if (tid < stride) {
-                        device_match_result_t other_match_result = block_match_results[tid + stride];
-                        if (other_match_result.match_score > block_match_results[tid].match_score) {
-                                block_match_results[tid] = other_match_result;
-                        }
+                if (tid < stride && block_scores[tid + stride] > block_scores[tid]) {
+                        block_scores[tid] = block_scores[tid + stride];
                 }
                 __syncthreads();
         }
+
         // write to device match results
         if (tid == 0) {
                 int idx = atomicAdd(&d_match_results_count, 1);
