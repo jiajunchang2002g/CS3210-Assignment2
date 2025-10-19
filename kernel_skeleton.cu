@@ -183,22 +183,17 @@ void runMatcher(const std::vector<klibpp::KSeq>& samples,
                 MatchResult res;
 
                 // Copy elements from device memory to host std::string
+                if (device_match_results[i].match_score == 0.0) {
+                        continue;
+                }
+                res.match_score    = device_match_results[i].match_score;
                 res.sample_name    = std::string(device_match_results[i].sample_name);
                 res.signature_name = std::string(device_match_results[i].signature_name);
-                res.match_score    = device_match_results[i].match_score;
                 res.integrity_hash = device_match_results[i].integrity_hash;
 
                 // Push into vector
                 match_results.push_back(std::move(res));
         }
-
-        // sort
-        std::sort(match_results.begin(), match_results.end(),
-                        [](const MatchResult &a, const MatchResult &b) {
-                        if (a.sample_name != b.sample_name)
-                        return a.sample_name < b.sample_name;
-                        return a.signature_name < b.signature_name;
-                        });
 
         // -------------------------------------------------------------------------
         // Cleanup
