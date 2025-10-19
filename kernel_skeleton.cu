@@ -84,8 +84,6 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
                 match_results[idx].signature_name = signature.name;
                 match_results[idx].match_score = block_scores[0] / signature.seq_len;
                 match_results[idx].integrity_hash = block_check_sums[0] % 97;
-                // debug
-                printf("%d\n", block_check_sums[0]);
         }
 }
 
