@@ -31,7 +31,6 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
 
         for (int i = start; i < end; i += blockDim.x) {
                 int t_curr_sum = 0;
-                // TODO: add sample [end:len]
                 t_check_sum += sample.qual[i] - 33;
 
                 for (int j = 0; j < signature.seq_len; ++j) {
@@ -49,6 +48,12 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
                         t_best_sum = t_curr_sum;
                 }
         }
+
+        // TODO: tail checksum reduction
+        for (int i = end + tid; i < sample.seq_len; i += blockDim.x) {
+                t_check_sum += sample.qual[i] - 33;
+        }
+
         // init
         __shared__ double block_scores[BLOCK_SIZE];
         __shared__ int block_check_sums[BLOCK_SIZE];
