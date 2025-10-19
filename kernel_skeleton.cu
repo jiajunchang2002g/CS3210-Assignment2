@@ -1,6 +1,7 @@
 #include <vector>
 #include <cstring>
 #include <cuda_runtime.h>
+#include <algorithm>
 
 #include "kseq/kseq.h"
 #include "common.h"
@@ -139,7 +140,7 @@ void runMatcher(const std::vector<klibpp::KSeq>& samples,
 
         // At most 1% of samples have a virus
         // int match_results_size = static_cast<int>(ceil(samples.size() / 100.0));
-        int match_results_size = 20;
+        int match_results_size = 30;
 
         // Allocate array of structs in unified memory
         device_match_result_t* device_match_results = nullptr;
@@ -176,6 +177,14 @@ void runMatcher(const std::vector<klibpp::KSeq>& samples,
         // -------------------------------------------------------------------------
         // Process Match Results
         // -------------------------------------------------------------------------
+
+        std::sort(res.begin(), res.end(),
+        [](const MatchResult &a, const MatchResult &b) {
+            if (a.sample_name != b.sample_name)
+                return a.sample_name < b.sample_name;
+            return a.signature_name < b.signature_name;
+        });
+
         for (int i = 0; i < match_results_size; ++i) {
                 MatchResult res;
 
