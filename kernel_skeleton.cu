@@ -47,9 +47,6 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
                         t_best_sum = t_curr_sum;
                 }
         }
-        if (t_best_sum == 463) {
-                printf("hi");
-        }
 
         // copy 
         __shared__ double block_scores[BLOCK_SIZE];
@@ -62,17 +59,22 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
         for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
                 if (tid < stride && block_scores[tid + stride] > block_scores[tid]) {
                         block_scores[tid] = block_scores[tid + stride];
+                        if (block_scores[tid] == 463) {
+                                printf("REDUCTION %d\n", tid);
+                        }
                 }
                 __syncthreads();
         }
 
-        // write to device match results 
-        if (tid == 0) {
+        if (block_scores[0] > 0 && tid == 0) {
                 int idx = atomicAdd(&d_match_results_count, 1);
                 match_results[idx].sample_name = sample.name;
                 match_results[idx].sample_name = sample.name;
                 match_results[idx].signature_name = signature.name;
                 match_results[idx].match_score = block_scores[0];
+                if (match_results[idx].match_score == 463) {
+                        printf("transported to match_results %d\n", idx);
+                }
         }
 }
 
@@ -130,7 +132,8 @@ void runMatcher(const std::vector<klibpp::KSeq>& samples,
         // -------------------------------------------------------------------------
 
         // At most 1% of samples have a virus
-        int match_results_size = static_cast<int>(ceil(samples.size() / 100.0));
+        // int match_results_size = static_cast<int>(ceil(samples.size() / 100.0));
+        int match_results_size = 20;
 
         // Allocate array of structs in unified memory
         device_match_result_t* device_match_results = nullptr;
