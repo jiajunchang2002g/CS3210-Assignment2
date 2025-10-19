@@ -26,6 +26,7 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
         int end = sample.seq_len - signature.seq_len;
 
         int t_best_sum = 0;
+        int check_sum = 0;
 
         for (int i = start; i < end; i += blockDim.x) {
                 int t_curr_sum = 0;
@@ -34,9 +35,6 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
                         char s = sample.seq[i + j];
 
                         if (s == t || s == 'N' || t == 'N') {
-                                if (sample_idx == 2 && signature_idx == 4 && j == signature.seq_len - 1) {
-                                        printf("%c matches %c add %c at sample_pos %d sig_pos %d, sum is %d\n", s, t, sample.qual[i+j], i+j, j, t_curr_sum);
-                                }
                                 t_curr_sum += sample.qual[i+j] - 33;
                         } else {
                                 t_curr_sum = 0;
@@ -59,9 +57,6 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
         for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
                 if (tid < stride && block_scores[tid + stride] > block_scores[tid]) {
                         block_scores[tid] = block_scores[tid + stride];
-                        if (block_scores[tid] == 463) {
-                                printf("REDUCTION %d\n", tid);
-                        }
                 }
                 __syncthreads();
         }
@@ -71,10 +66,7 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
                 match_results[idx].sample_name = sample.name;
                 match_results[idx].sample_name = sample.name;
                 match_results[idx].signature_name = signature.name;
-                match_results[idx].match_score = block_scores[0];
-                if (match_results[idx].match_score == 463) {
-                        printf("transported to match_results %d\n", idx);
-                }
+                match_results[idx].match_score = block_scores[0] / signature.seq_len;
         }
 }
 
@@ -132,8 +124,7 @@ void runMatcher(const std::vector<klibpp::KSeq>& samples,
         // -------------------------------------------------------------------------
 
         // At most 1% of samples have a virus
-        // int match_results_size = static_cast<int>(ceil(samples.size() / 100.0));
-        int match_results_size = 20;
+        int match_results_size = 22;
 
         // Allocate array of structs in unified memory
         device_match_result_t* device_match_results = nullptr;
@@ -180,7 +171,9 @@ void runMatcher(const std::vector<klibpp::KSeq>& samples,
                 res.integrity_hash = device_match_results[i].integrity_hash;
 
                 // Push into vector
-                match_results.push_back(std::move(res));
+                if (res.match_score > 0) {
+                        match_results.push_back(std::move(res));
+                }
         }
 
         // -------------------------------------------------------------------------
