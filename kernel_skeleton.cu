@@ -27,10 +27,12 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
         int end = sample.seq_len - signature.seq_len;
 
         int t_best_sum = 0;
-        int t_best_pos = -1;
+        int t_check_sum = 0;
 
         for (int i = start; i < end; i += blockDim.x) {
                 int t_curr_sum = 0;
+                // TODO: add sample [end:len]
+                t_check_sum += sample.qual[i] - 33;
 
                 for (int j = 0; j < signature.seq_len; ++j) {
                         char t = signature.seq[j];
@@ -45,7 +47,6 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
                 }
                 if (t_best_sum < t_curr_sum) {
                         t_best_sum = t_curr_sum;
-                        t_best_pos = i;
                 }
         }
         // init
@@ -55,33 +56,31 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
         block_check_sums[tid] = 0;
         __syncthreads();
 
-        // compute check_sum if match found
-        int t_check_sum = 0;
-        if (t_best_pos >= 0) {
-                for (int j = 0; j < signature.seq_len; ++j)
-                        t_check_sum += sample.qual[t_best_pos + j] - 33;
-        }
-
         // copy 
         block_scores[tid] = t_best_sum;
         block_check_sums[tid] = t_check_sum;
         __syncthreads();
 
-        // reduction
+        // reduction 
         for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-                if (tid < stride && block_scores[tid + stride] > block_scores[tid]) {
-                        block_scores[tid] = block_scores[tid + stride];
-                        block_check_sums[tid] = block_check_sums[tid + stride];
+                if (tid < stride) {
+                        block_check_sums[tid] += block_check_sums[tid + stride]; 
+                        if (block_scores[tid + stride] > block_scores[tid]) {
+                                block_scores[tid] = block_scores[tid + stride];
+                        }
                 }
                 __syncthreads();
         }
 
+        // write to match results
         if (block_scores[0] > 0 && tid == 0) {
                 int idx = atomicAdd(&d_match_results_count, 1);
                 match_results[idx].sample_name = sample.name;
                 match_results[idx].signature_name = signature.name;
                 match_results[idx].match_score = block_scores[0] / signature.seq_len;
                 match_results[idx].integrity_hash = block_check_sums[0] % 97;
+                // debug
+                printf("%d\n", block_check_sums[0]);
         }
 }
 
@@ -177,14 +176,6 @@ void runMatcher(const std::vector<klibpp::KSeq>& samples,
         // -------------------------------------------------------------------------
         // Process Match Results
         // -------------------------------------------------------------------------
-
-        std::sort(res.begin(), res.end(),
-        [](const MatchResult &a, const MatchResult &b) {
-            if (a.sample_name != b.sample_name)
-                return a.sample_name < b.sample_name;
-            return a.signature_name < b.signature_name;
-        });
-
         for (int i = 0; i < match_results_size; ++i) {
                 MatchResult res;
 
@@ -197,6 +188,14 @@ void runMatcher(const std::vector<klibpp::KSeq>& samples,
                 // Push into vector
                 match_results.push_back(std::move(res));
         }
+
+        // sort
+        std::sort(match_results.begin(), match_results.end(),
+                        [](const MatchResult &a, const MatchResult &b) {
+                        if (a.sample_name != b.sample_name)
+                        return a.sample_name < b.sample_name;
+                        return a.signature_name < b.signature_name;
+                        });
 
         // -------------------------------------------------------------------------
         // Cleanup
