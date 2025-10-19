@@ -6,7 +6,7 @@
 #include "common.h"
 #include "device_seq_t.h"
 
-#define BLOCK_SIZE 128
+#define BLOCK_SIZE 256
 
 __device__ int d_match_results_count = 0;
 
@@ -26,7 +26,7 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
         int end = sample.seq_len - signature.seq_len;
 
         int t_best_sum = 0;
-        int t_best_pos = 0;
+        int t_best_pos = -1;
 
         for (int i = start; i < end; i += blockDim.x) {
                 int t_curr_sum = 0;
@@ -47,7 +47,14 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
                         t_best_pos = i;
                 }
         }
+        // init
+        __shared__ double block_scores[BLOCK_SIZE];
+        __shared__ int block_check_sums[BLOCK_SIZE];
+        block_scores[tid] = 0;
+        block_check_sums[tid] = 0;
+        __syncthreads();
 
+        // compute check_sum if match found
         int t_check_sum = 0;
         if (t_best_pos >= 0) {
                 for (int j = 0; j < signature.seq_len; ++j)
@@ -55,11 +62,8 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
         }
 
         // copy 
-        __shared__ double block_scores[BLOCK_SIZE];
-        __shared__ int block_check_sums[BLOCK_SIZE];
         block_scores[tid] = t_best_sum;
         block_check_sums[tid] = t_check_sum;
-
         __syncthreads();
 
         // reduction
