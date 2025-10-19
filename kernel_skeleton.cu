@@ -13,7 +13,7 @@ __device__ int d_match_results_count = 0;
 __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const device_seq_t* d_signatures, 
                 int num_signatures, device_match_result_t* match_results) {
 
-        int id = (blockIdx.y * gridDim.x + blockIdx.x) * blockDim.x + threadIdx.x;
+        // int id = (blockIdx.y * gridDim.x + blockIdx.x) * blockDim.x + threadIdx.x;
 
         const int sample_idx    = blockIdx.x;
         const int signature_idx = blockIdx.y;
@@ -24,43 +24,38 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
 
         int start = tid;
         int end = sample.seq_len - signature.seq_len;
-        if (end < 0) return;
 
-        long long unsigned checksum = 0;
-        int best_sum = 0;
-
-        // thread local match result
-        device_match_result_t match_result {};
-        match_result.sample_name = sample.name;
-        match_result.signature_name = signature.name;
-        match_result.match_score = 0;
+        int t_best_sum = 0;
 
         for (int i = start; i < end; i += blockDim.x) {
-                int curr_sum = 0;
+                int t_curr_sum = 0;
                 for (int j = 0; j < signature.seq_len; ++j) {
                         char t = signature.seq[j];
                         char s = sample.seq[i + j];
 
-                        if (s == 'N' || t == 'N') continue;
-
-                        if (s == t) {
-                                curr_sum += static_cast<int>(sample.qual[i + j] - 33);
+                        if (s == t || s == 'N' || t == 'N') {
+                                if (sample_idx == 2 && signature_idx == 4 && j == signature.seq_len - 1) {
+                                        printf("%c matches %c add %c at sample_pos %d sig_pos %d, sum is %d\n", s, t, sample.qual[i+j], i+j, j, t_curr_sum);
+                                }
+                                t_curr_sum += sample.qual[i+j] - 33;
                         } else {
-                                curr_sum = 0;
+                                t_curr_sum = 0;
                                 break;
                         } 
                 }
-                if (curr_sum > best_sum) {
-                        // better match found
-                        best_sum = curr_sum;
+                if (t_best_sum < t_curr_sum) {
+                        t_best_sum = t_curr_sum;
                 }
         }
-        // match_result.match_score = best_sum;
-        // match_result.integrity_hash = checksum % 97;
+        if (t_best_sum == 463) {
+                printf("hi");
+        }
 
         // copy 
         __shared__ double block_scores[BLOCK_SIZE];
-        block_scores[tid] = best_sum;
+        if (t_best_sum > 0) {
+                block_scores[tid] = t_best_sum;
+        }
         __syncthreads();
 
         // reduction
@@ -71,14 +66,14 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
                 __syncthreads();
         }
 
-        // write to device match results
+        // write to device match results 
         if (tid == 0) {
                 int idx = atomicAdd(&d_match_results_count, 1);
+                match_results[idx].sample_name = sample.name;
                 match_results[idx].sample_name = sample.name;
                 match_results[idx].signature_name = signature.name;
                 match_results[idx].match_score = block_scores[0];
         }
-
 }
 
 void runMatcher(const std::vector<klibpp::KSeq>& samples,
@@ -106,10 +101,8 @@ void runMatcher(const std::vector<klibpp::KSeq>& samples,
                 cudaMallocManaged(&d_samples[i].qual, s.qual.size() + 1);
 
                 std::strcpy(d_samples[i].name, s.name.c_str());
-                // std::strcpy(d_samples[i].seq,  s.seq.c_str());
                 std::memcpy(d_samples[i].seq, s.seq.data(), s.seq.size());
                 d_samples[i].seq[s.seq.size()] = '\0'; 
-                // std::strcpy(d_samples[i].qual, s.qual.c_str());
                 std::memcpy(d_samples[i].qual, s.qual.data(), s.qual.size());
                 d_samples[i].qual[s.qual.size()] = '\0'; 
         }
@@ -126,12 +119,8 @@ void runMatcher(const std::vector<klibpp::KSeq>& samples,
                 cudaMallocManaged(&d_signatures[i].qual, sig.qual.size() + 1);
 
                 std::strcpy(d_signatures[i].name, sig.name.c_str());
-
-                // std::strcpy(d_signatures[i].seq,  sig.seq.c_str());
                 std::memcpy(d_signatures[i].seq, sig.seq.data(), sig.seq.size());
                 d_signatures[i].seq[sig.seq.size()] = '\0';
-
-                // std::strcpy(d_signatures[i].qual, sig.qual.c_str());
                 std::memcpy(d_signatures[i].qual, sig.qual.data(), sig.qual.size());
                 d_signatures[i].qual[sig.qual.size()] = '\0';
         }
