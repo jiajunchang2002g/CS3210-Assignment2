@@ -6,7 +6,7 @@
 #include "common.h"
 #include "device_seq_t.h"
 
-#define BLOCK_SIZE 256
+#define BLOCK_SIZE 128
 
 __device__ int d_match_results_count = 0;
 
@@ -26,10 +26,11 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
         int end = sample.seq_len - signature.seq_len;
 
         int t_best_sum = 0;
-        int check_sum = 0;
+        int t_best_pos = 0;
 
         for (int i = start; i < end; i += blockDim.x) {
                 int t_curr_sum = 0;
+
                 for (int j = 0; j < signature.seq_len; ++j) {
                         char t = signature.seq[j];
                         char s = sample.seq[i + j];
@@ -43,20 +44,29 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
                 }
                 if (t_best_sum < t_curr_sum) {
                         t_best_sum = t_curr_sum;
+                        t_best_pos = i;
                 }
+        }
+
+        int t_check_sum = 0;
+        if (t_best_pos >= 0) {
+                for (int j = 0; j < signature.seq_len; ++j)
+                        t_check_sum += sample.qual[t_best_pos + j] - 33;
         }
 
         // copy 
         __shared__ double block_scores[BLOCK_SIZE];
-        if (t_best_sum > 0) {
-                block_scores[tid] = t_best_sum;
-        }
+        __shared__ int block_check_sums[BLOCK_SIZE];
+        block_scores[tid] = t_best_sum;
+        block_check_sums[tid] = t_check_sum;
+
         __syncthreads();
 
         // reduction
         for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
                 if (tid < stride && block_scores[tid + stride] > block_scores[tid]) {
                         block_scores[tid] = block_scores[tid + stride];
+                        block_check_sums[tid] = block_check_sums[tid + stride];
                 }
                 __syncthreads();
         }
@@ -64,9 +74,9 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
         if (block_scores[0] > 0 && tid == 0) {
                 int idx = atomicAdd(&d_match_results_count, 1);
                 match_results[idx].sample_name = sample.name;
-                match_results[idx].sample_name = sample.name;
                 match_results[idx].signature_name = signature.name;
                 match_results[idx].match_score = block_scores[0] / signature.seq_len;
+                match_results[idx].integrity_hash = block_check_sums[0] % 97;
         }
 }
 
@@ -124,7 +134,8 @@ void runMatcher(const std::vector<klibpp::KSeq>& samples,
         // -------------------------------------------------------------------------
 
         // At most 1% of samples have a virus
-        int match_results_size = 22;
+        // int match_results_size = static_cast<int>(ceil(samples.size() / 100.0));
+        int match_results_size = 20;
 
         // Allocate array of structs in unified memory
         device_match_result_t* device_match_results = nullptr;
@@ -171,9 +182,7 @@ void runMatcher(const std::vector<klibpp::KSeq>& samples,
                 res.integrity_hash = device_match_results[i].integrity_hash;
 
                 // Push into vector
-                if (res.match_score > 0) {
-                        match_results.push_back(std::move(res));
-                }
+                match_results.push_back(std::move(res));
         }
 
         // -------------------------------------------------------------------------
