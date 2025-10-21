@@ -49,7 +49,7 @@ __global__ void myKernel(const device_seq_t* d_samples, int num_samples, const d
                 }
         }
 
-        // TODO: tail checksum reduction
+        // Tail checksum reduction
         for (int i = end + tid; i < sample.seq_len; i += blockDim.x) {
                 t_check_sum += sample.qual[i] - 33;
         }
@@ -141,8 +141,7 @@ void runMatcher(const std::vector<klibpp::KSeq>& samples,
         // -------------------------------------------------------------------------
 
         // At most 1% of samples have a virus
-        // int match_results_size = static_cast<int>(ceil(samples.size() / 100.0));
-        int match_results_size = 30;
+        int match_results_size = static_cast<int>(ceil(samples.size() / 100.0)) * signatures.size();
 
         // Allocate array of structs in unified memory
         device_match_result_t* device_match_results = nullptr;
@@ -182,7 +181,7 @@ void runMatcher(const std::vector<klibpp::KSeq>& samples,
         for (int i = 0; i < match_results_size; ++i) {
                 MatchResult res;
 
-                // Copy elements from device memory to host std::string
+                // discard empty match results
                 if (device_match_results[i].match_score == 0.0) {
                         continue;
                 }
