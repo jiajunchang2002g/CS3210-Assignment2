@@ -166,20 +166,9 @@ Recommended measurement steps:
 	- More advanced string-match algorithms (Aho–Corasick, suffix arrays) adapted for GPUs.
 	- Memory packing and vectorised comparisons for shorter signatures.
 
-## License
-
-This repo is provided for coursework. Check the project root for an explicit LICENSE file. If none is present, assume the code is for educational use only and contact the authors for permission before reuse.
-
 ## Acknowledgements
 
 - Instructor and course staff for CS3210.
 - The kseq FASTA parser included in `kseq/` (lightweight parser commonly used in bioinformatics examples).
 
 ---
-
-If you'd like, I can:
-
-- Inspect the `Makefile` in this repo and add exact build/run commands to this README.
-- Add short example data and a minimal Makefile target to produce a runnable demo and a small test.
-
-Tell me which you'd prefer and I'll update the README accordingly.
