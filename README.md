@@ -1,10 +1,6 @@
-# CS3210 Assignment 2 – DNA Virus String Matching (CUDA)
+DNA Virus String Matching (CUDA)
 
 Authors: Chang Jia Jun / Hieu Trung
-
-Course: CS3210 – High Performance Computing
-
-Repository: https://github.com/jiajunchang2002g/CS3210-Assignment2
 
 ## Table of contents
 
